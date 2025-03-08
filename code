@@ -1,0 +1,145 @@
+!pip install librosa soundfile numpy pandas tensorflow keras scikit-learn
+!pip install gdown
+
+import os
+import librosa
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import to_categorical
+import gdown
+from tensorflow.keras.models import load_model
+import ipywidgets as widgets
+from google.colab import files
+import os
+
+# Download the dataset from GitHub using gdown
+DATASET_PATH = "https://github.com/afran-263/Speech-Emotion-Classification-/archive/9bcfecf74bbfbe11b32714b17c45685f6561976c.zip"  
+output_path = "speech_emotion_dataset.zip"
+
+gdown.download(DATASET_PATH, output_path, quiet=False)
+
+
+import zipfile
+# Unzip the downloaded dataset
+with zipfile.ZipFile(output_path, 'r') as zip_ref:
+    zip_ref.extractall("speech_emotion_dataset")
+
+DATASET_PATH = "speech_emotion_dataset/Speech-Emotion-Classification--9bcfecf74bbfbe11b32714b17c45685f6561976c/data" # Adjust to the extracted folder path
+
+
+# Define emotion labels
+emotions = {"Anger": 0, "Fear":1, "Happy": 2, "Neutral": 3, "Sad":4}  # Modify based on your dataset
+n_mfcc = 40  # Number of MFCC features
+
+def extract_features(file_path):
+    try:
+        audio, sample_rate = librosa.load(file_path, sr=22050)
+        mfcc = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=n_mfcc)
+        return np.mean(mfcc.T, axis=0)  # Take mean along time axis
+    except Exception as e:
+        print(f"Error processing {file_path}: {e}")
+        return None
+
+X, y = [], []
+
+# Iterate through speakers
+for speaker in os.listdir(DATASET_PATH):
+    speaker_path = os.path.join(DATASET_PATH, speaker)
+    if os.path.isdir(speaker_path):  # Check if it's a directory
+        # Iterate through emotions
+        for emotion in os.listdir(speaker_path):
+            emotion_path = os.path.join(speaker_path, emotion)
+            if os.path.isdir(emotion_path) and emotion in emotions:
+                for file in os.listdir(emotion_path):
+                    if file.endswith(".wav"):
+                        file_path = os.path.join(emotion_path, file)
+                        features = extract_features(file_path)
+                        if features is not None:
+                            X.append(features)
+                            y.append(emotions[emotion])
+
+X = np.array(X)
+y = np.array(y)
+y = to_categorical(y, num_classes=len(emotions))  # One-hot encode labels
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv1D, MaxPooling1D, LSTM, Flatten, Dropout, BatchNormalization
+
+model = Sequential([
+    Conv1D(64, kernel_size=3, activation='relu', input_shape=(n_mfcc, 1)),
+    BatchNormalization(),
+    MaxPooling1D(pool_size=2),
+    LSTM(64, return_sequences=True),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.3),
+    Dense(len(emotions), activation='softmax')  # Output layer
+])
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.summary()
+
+X_train = X_train[..., np.newaxis]  # Add channel dimension
+X_test = X_test[..., np.newaxis]
+
+history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=50, batch_size=32)
+
+test_loss, test_acc = model.evaluate(X_test, y_test)
+print(f"Test Accuracy: {test_acc * 100:.2f}%")
+
+
+plt.figure(figsize=(12, 4))
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Val Accuracy')
+plt.legend()
+plt.title("Model Accuracy")
+
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Val Loss')
+plt.legend()
+plt.title("Model Loss")
+plt.show()
+
+# Save the model to a local file
+model.save("speech_emotion_model.h5")  
+
+# Load the model from the local file path
+
+loaded_model = load_model("speech_emotion_model.h5")
+
+
+
+def predict_emotion(file_path, model):
+    features = extract_features(file_path)
+    if features is None:
+        print("Error: Feature extraction failed.")
+        return None
+    features = features.reshape(1, -1, 1)
+    prediction = model.predict(features)
+    predicted_label = np.argmax(prediction)
+    for emotion, idx in emotions.items():
+        if idx == predicted_label:
+            return emotion
+
+# Upload file manually
+uploaded = files.upload()
+
+# Get uploaded file path
+if uploaded:
+    file_path = list(uploaded.keys())[0]
+    print(f"Selected file: {file_path}")
+
+    # Predict emotion
+    predicted_emotion = predict_emotion(file_path, loaded_model)
+    print(f"Predicted Emotion: {predicted_emotion}")
+
+
+
