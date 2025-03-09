@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Emotion Detector</title>
+    <style>
+        /* General Styling */
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(to right, #141e30, #243b55);
+            color: #fff;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        /* Custom File Upload Box */
+        .file-upload {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 15px;
+        }
+
+        .file-upload label {
+            background: #ff5e57;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+
+        .file-upload label:hover {
+            background: #ff3b3b;
+        }
+
+        .file-upload input {
+            display: none;
+        }
+
+        .file-name {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ddd;
+        }
+
+        /* Button Styling */
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            margin-top: 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: 0.3s;
+            display: block;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .btn:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
+
+        /* Result Section */
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            display: none;
+            text-align: left;
+        }
+
+        .result h2, .result h3 {
+            margin-bottom: 10px;
+        }
+
+        .emotion-display {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+
+        .emotion-description {
+            font-style: italic;
+            font-size: 14px;
+            color: #ddd;
+        }
+
+        .result ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .result ul li {
+            background: rgba(255, 255, 255, 0.3);
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: 0.3s;
+            text-decoration: underline;
+        }
+
+        .result ul li:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Smooth Scroll */
+        html {
+            scroll-behavior: smooth;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🎙️ Speech Emotion Detector</h1>
+
+        <div class="file-upload">
+            <label for="audioFile">📂 Choose a File</label>
+            <input type="file" id="audioFile" accept="audio/*">
+            <div class="file-name" id="fileName">No file chosen</div>
+        </div>
+
+        <button class="btn" id="uploadBtn" onclick="uploadAudio()" disabled>Analyze Emotion</button>
+
+        <div id="result" class="result">
+            <h2>Detected Emotion: <span id="emotion"></span></h2>
+            <div class="emotion-display" id="emoji"></div>
+            <div class="emotion-description" id="emotionDesc"></div>
+            <h3>🎬 Recommended Movies:</h3>
+            <ul id="movies"></ul>
+            <h3>🎵 Recommended Songs:</h3>
+            <ul id="songs"></ul>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById("audioFile");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const fileNameDisplay = document.getElementById("fileName");
+
+        fileInput.addEventListener("change", () => {
+            if (fileInput.files.length) {
+                fileNameDisplay.innerText = fileInput.files[0].name;
+                uploadBtn.disabled = false;
+            } else {
+                fileNameDisplay.innerText = "No file chosen";
+                uploadBtn.disabled = true;
+            }
+        });
+
+        async function uploadAudio() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            uploadBtn.innerText = "Processing...";
+            uploadBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const response = await fetch("http://127.0.0.1:5000/predict", {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await response.json();
+
+                const emotion = data.emotion;
+                document.getElementById("emotion").innerText = emotion;
+
+                // Mapping emotions to emojis & descriptions
+                const emotionMap = {
+                    "Happy": { emoji: "😊", desc: "You sound joyful and upbeat!" },
+                    "Sad": { emoji: "😢", desc: "You seem down. Hope things get better!" },
+                    "Angry": { emoji: "😡", desc: "You sound upset. Take a deep breath!" },
+                    "Fear": { emoji: "😨", desc: "You might be feeling scared or anxious." },
+                    "Surprised": { emoji: "😲", desc: "Wow! That caught you off guard!" },
+                    "Neutral": { emoji: "😐", desc: "You sound calm and neutral." }
+                };
+
+                const emojiData = emotionMap[emotion] || { emoji: "❓", desc: "Emotion not recognized." };
+                document.getElementById("emoji").innerText = emojiData.emoji;
+                document.getElementById("emotionDesc").innerText = emojiData.desc;
+
+                // Display recommendations
+                const moviesList = document.getElementById("movies");
+                moviesList.innerHTML = "";
+                data.recommendations.movies.forEach(movie => {
+                    let li = document.createElement("li");
+                    li.innerText = movie;
+                    li.onclick = () => window.open(`https://www.youtube.com/results?search_query=${movie}+trailer`, "_blank");
+                    moviesList.appendChild(li);
+                });
+
+                const songsList = document.getElementById("songs");
+                songsList.innerHTML = "";
+                data.recommendations.songs.forEach(song => {
+                    let li = document.createElement("li");
+                    li.innerText = song;
+                    li.onclick = () => window.open(`https://www.youtube.com/results?search_query=${song}+song`, "_blank");
+                    songsList.appendChild(li);
+                });
+
+                document.getElementById("result").style.display = "block";
+                document.getElementById("result").scrollIntoView({ behavior: "smooth" });
+
+            } catch (error) {
+                alert("Error analyzing audio!");
+                console.error(error);
+            } finally {
+                uploadBtn.innerText = "Analyze Emotion";
+                uploadBtn.disabled = false;
+            }
+        }
+    </script>
+
+</body>
+</html>
